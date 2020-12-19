@@ -8,20 +8,6 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "type": "cortex-debug",
-            "request": "launch",
-            "name": "Debug FlightControl (QEMU)",
-            "servertype": "qemu",
-            "cwd": "${workspaceRoot}",
-            "preLaunchTask": "rust: cargo build",
-            "runToMain": true,
-            "executable": "./target/thumbv7em-none-eabi/debug/flightcontrol",
-            /* Run `cargo build --example hello` and uncomment this line to run semi-hosting example */
-            //"executable": "./target/thumbv7m-none-eabi/debug/examples/hello",
-            "cpu": "cortex-m3",
-            "machine": "lm3s6965evb",
-        },
-        {
             /* Configuration for the STM32F303 Discovery board */
             "type": "cortex-debug",
             "request": "launch",
@@ -51,20 +37,6 @@
             "postLaunchCommands": [
                 "monitor arm semihosting enable",
             ],
-        },
-        {
-            "type": "cortex-debug",
-            "request": "launch",
-            "name": "Debug Navigation (QEMU)",
-            "servertype": "qemu",
-            "cwd": "${workspaceRoot}",
-            "preLaunchTask": "rust: cargo build",
-            "runToMain": true,
-            "executable": "./target/thumbv7em-none-eabi/debug/navigation",
-            /* Run `cargo build --example hello` and uncomment this line to run semi-hosting example */
-            //"executable": "./target/thumbv7m-none-eabi/debug/examples/hello",
-            "cpu": "cortex-m3",
-            "machine": "lm3s6965evb",
         },
         {
             /* Configuration for the STM32F303 Discovery board */

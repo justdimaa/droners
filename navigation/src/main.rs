@@ -6,7 +6,7 @@ extern crate cortex_m_semihosting;
 extern crate panic_halt;
 
 use aeroflight_components::{internal, neo6m, sx1278};
-use stm32f4xx_hal::{gpio, i2c, pac, prelude::*, pwm, serial, stm32};
+use stm32f4xx_hal::{gpio, i2c, pac, prelude::*, serial, stm32, timer};
 
 type I2c1 = i2c::I2c<
     pac::I2C1,
@@ -32,6 +32,8 @@ type Serial2 = serial::Serial<
     ),
 >;
 
+type PcbLed = gpio::gpioc::PC13<gpio::Output<gpio::OpenDrain>>;
+
 type Controller = sx1278::E32<pac::USART1>;
 type GpsModule = neo6m::Neo6m<pac::USART2>;
 type FlightControl = internal::FlightControl<pac::I2C1>;
@@ -45,6 +47,8 @@ const APP: () = {
         controller: Controller,
         gps: GpsModule,
         fc: FlightControl,
+        tim2: timer::Timer<pac::TIM2>,
+        pcb_led: PcbLed,
     }
 
     #[init]
@@ -54,15 +58,11 @@ const APP: () = {
 
         let rcc = device.RCC.constrain();
 
-        let clocks = rcc
-            .cfgr
-            .sysclk(84.mhz())
-            .pclk2(28.mhz())
-            .pclk1(28.mhz())
-            .freeze();
+        let clocks = rcc.cfgr.use_hse(25.mhz()).sysclk(48.mhz()).freeze();
 
         let gpioa = device.GPIOA.split();
         let gpiob = device.GPIOB.split();
+        let gpioc = device.GPIOC.split();
 
         let i2c1 = i2c::I2c::i2c1(
             device.I2C1,
@@ -108,6 +108,9 @@ const APP: () = {
         let gps = neo6m::Neo6m::<pac::USART2>::new();
         let fc = internal::FlightControl::<pac::I2C1>::new();
 
+        let mut tim2 = timer::Timer::tim2(device.TIM2, 1.hz(), clocks);
+        tim2.listen(timer::Event::TimeOut);
+
         init::LateResources {
             i2c1,
             serial1,
@@ -115,6 +118,8 @@ const APP: () = {
             controller,
             gps,
             fc,
+            tim2,
+            pcb_led: gpioc.pc13.into_open_drain_output(),
         }
     }
 
@@ -123,6 +128,15 @@ const APP: () = {
         loop {
             cortex_m::asm::wfi();
         }
+    }
+
+    #[task(binds = TIM2, resources = [tim2, i2c1, fc, pcb_led])]
+    fn tim2(cx: tim2::Context) {
+        let tim2: &mut timer::Timer<pac::TIM2> = cx.resources.tim2;
+        tim2.clear_interrupt(timer::Event::TimeOut);
+
+        let pcb_led: &mut PcbLed = cx.resources.pcb_led;
+        pcb_led.toggle().ok();
     }
 
     #[task(binds = USART1, resources = [serial1, controller, i2c1, fc])]
@@ -138,8 +152,16 @@ const APP: () = {
                     match v {
                         Some(v) => {
                             let throttle = v.right_trigger as u16 * 256;
-                            if let Err(_) = fc.set_throttle(i2c1, 0, throttle) {
-                                hprintln!("failed to send throttle {}", throttle).unwrap();
+
+                            match fc.send(
+                                i2c1,
+                                internal::Command::Throttle {
+                                    esc_id: 0,
+                                    value: throttle,
+                                },
+                            ) {
+                                Ok(_) => {}
+                                Err(_) => {}
                             }
                         }
                         None => {}

@@ -7,10 +7,11 @@ extern crate panic_halt;
 
 use core::ops::Deref;
 
+use aeroflight_components::internal;
 use stm32f4xx_hal::{
     delay,
     dma::{self, traits::Stream},
-    gpio, pac,
+    gpio, i2c, pac,
     prelude::*,
     pwm, spi, stm32, time, timer,
 };
@@ -51,6 +52,16 @@ type DmaTransfer2 = dma::Transfer<
     &'static mut [u16; DMA_BUFFER_LEN],
 >;
 
+type I2c1 = i2c::I2c<
+    pac::I2C1,
+    (
+        gpio::gpiob::PB6<gpio::AlternateOD<gpio::AF4>>,
+        gpio::gpiob::PB7<gpio::AlternateOD<gpio::AF4>>,
+    ),
+>;
+
+type Navigation = internal::Navigation<pac::I2C1>;
+
 const DMA_BUFFER_LEN: usize = DSHOT_BUFFER_LEN + 2;
 const DSHOT_BUFFER_LEN: usize = 16;
 const DSHOT_BIT_0: u16 = 7;
@@ -60,11 +71,11 @@ const DSHOT_600_MHZ: u32 = 12;
 #[rtic::app(device = stm32f4xx_hal::pac, peripherals = true, monotonic = rtic::cyccnt::CYCCNT)]
 const APP: () = {
     struct Resources {
-        delay: delay::Delay,
+        i2c1: I2c1,
+        nav: Navigation,
         dma_transfer4: DmaTransfer4,
         dma_buffer4: Option<&'static mut [u16; DMA_BUFFER_LEN]>,
-        tim2: timer::Timer<pac::TIM2>,
-        dshot_step: u32,
+        esc0_throttle: u16,
     }
 
     #[init]
@@ -140,26 +151,31 @@ const APP: () = {
                 .priority(dma::config::Priority::High),
         );
 
-        let delay = delay::Delay::new(core.SYST, clocks);
+        let i2c1 = i2c::I2c::i2c1(
+            device.I2C1,
+            (
+                gpiob.pb6.into_alternate_af4_open_drain(),
+                gpiob.pb7.into_alternate_af4_open_drain(),
+            ),
+            400.khz(),
+            clocks,
+        );
 
-        let mut tim2 = timer::Timer::tim2(device.TIM2, 1.hz(), clocks);
-        tim2.listen(timer::Event::TimeOut);
+        let nav = internal::Navigation::new();
 
         init::LateResources {
-            delay,
+            i2c1,
+            nav,
             dma_transfer4,
             dma_buffer4: Some(
                 cortex_m::singleton!(: [u16; DMA_BUFFER_LEN] = [0; DMA_BUFFER_LEN]).unwrap(),
             ),
-            tim2,
-            dshot_step: 0,
+            esc0_throttle: 0,
         }
     }
 
     #[idle(resources = [dma_transfer4])]
     fn idle(mut cx: idle::Context) -> ! {
-        hprintln!("idle").unwrap();
-
         cx.resources
             .dma_transfer4
             .lock(move |shared: &mut DmaTransfer4| {
@@ -173,29 +189,33 @@ const APP: () = {
         }
     }
 
-    #[task(binds = TIM2, resources = [dshot_step])]
-    fn tim2(cx: tim2::Context) {
-        hprintln!("tim2").unwrap();
+    #[task(binds = I2C1_EV, resources = [i2c1, nav, esc0_throttle])]
+    fn i2c1_ev(cx: i2c1_ev::Context) {
+        let i2c1: &mut I2c1 = cx.resources.i2c1;
+        let nav: &mut Navigation = cx.resources.nav;
+        let esc0_throttle: &mut u16 = cx.resources.esc0_throttle;
 
-        let dshot_step: &mut u32 = cx.resources.dshot_step;
-
-        match *dshot_step {
-            0..=100 => *dshot_step += 1,
-            _ => {},
+        if let Ok(cmd) = nav.read(i2c1) {
+            if let Some(cmd) = cmd {
+                match cmd {
+                    internal::Command::Throttle { esc_id, value } => {
+                        match esc_id {
+                            0 => *esc0_throttle = value,
+                            _ => {}
+                        };
+                    }
+                }
+            }
         }
     }
 
-    #[task(binds = DMA1_STREAM4, resources = [dma_transfer4, dma_buffer4, dshot_step])]
+    #[task(binds = DMA1_STREAM4, resources = [dma_transfer4, dma_buffer4, esc0_throttle])]
     fn dma1_stream4(cx: dma1_stream4::Context) {
         let dma_transfer: &mut DmaTransfer4 = cx.resources.dma_transfer4;
         let dma_buffer = cx.resources.dma_buffer4.take().unwrap();
-        let dshot_step: &mut u32 = cx.resources.dshot_step;
+        let esc_throttle: &mut u16 = cx.resources.esc0_throttle;
 
-        let mut packet = match *dshot_step {
-            0..=40 => encode_dshot_packet(0, false),
-            41..=100 => encode_dshot_packet(2047, false),
-            _ => encode_dshot_packet(0, false),
-        };
+        let mut packet = encode_dshot_packet(*esc_throttle, false);
 
         for n in 0..DSHOT_BUFFER_LEN {
             dma_buffer[n] = match packet & 0x8000 {

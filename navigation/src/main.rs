@@ -133,9 +133,9 @@ const APP: () = {
     #[task(binds = TIM2, resources = [tim2, i2c1, fc, pcb_led])]
     fn tim2(cx: tim2::Context) {
         let tim2: &mut timer::Timer<pac::TIM2> = cx.resources.tim2;
-        tim2.clear_interrupt(timer::Event::TimeOut);
-
         let pcb_led: &mut PcbLed = cx.resources.pcb_led;
+
+        tim2.clear_interrupt(timer::Event::TimeOut);
         pcb_led.toggle().ok();
     }
 
@@ -148,16 +148,15 @@ const APP: () = {
 
         while serial1.is_rxne() {
             match controller.read(serial1) {
-                Ok(v) => {
-                    match v {
-                        Some(v) => {
-                            let throttle = v.right_trigger as u16 * 256;
+                Ok(msg) => {
+                    match msg {
+                        Some(msg) => {
+                            let throttle = msg.right_trigger as u16 * 256;
 
                             match fc.send(
                                 i2c1,
-                                internal::Command::Throttle {
-                                    esc_id: 0,
-                                    value: throttle,
+                                internal::Command::ThrottleBulk {
+                                    values: [Some(throttle); 4],
                                 },
                             ) {
                                 Ok(_) => {}

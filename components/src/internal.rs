@@ -12,7 +12,7 @@ pub type I2cSize = U64;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Command {
-    Throttle { esc_id: u8, value: u16 },
+    ThrottleBulk { values: [Option<u16>; 4] },
 }
 
 impl Command {

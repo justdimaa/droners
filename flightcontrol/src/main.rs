@@ -7,7 +7,7 @@ extern crate panic_halt;
 
 use core::mem;
 
-use aeroflight_components::{esc, internal};
+use droners_components::{esc, internal};
 use esc::DSHOT_600_MHZ;
 use stm32f4xx_hal::{
     dma::{self, traits::Stream},

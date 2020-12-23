@@ -5,7 +5,7 @@
 extern crate cortex_m_semihosting;
 extern crate panic_halt;
 
-use aeroflight_components::{e32, internal, neo6m};
+use droners_components::{e32, internal, neo6m};
 use stm32f4xx_hal::{gpio, i2c, pac, prelude::*, serial, stm32, timer};
 
 type I2c1 = i2c::I2c<
@@ -168,7 +168,7 @@ const APP: () = {
                 Ok(msg) => {
                     match msg {
                         Some(msg) => {
-                            use aeroflight_components::e32::command::Command;
+                            use droners_components::e32::command::Command;
 
                             match msg {
                                 Command::Controller { right_trigger, .. } => {

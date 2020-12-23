@@ -1,5 +1,5 @@
 [package]
-name = "aeroflight-components"
+name = "droners-components"
 version = "0.1.0"
 authors = ["Dimitri Popov <personal@dimaa.io>"]
 edition = "2018"

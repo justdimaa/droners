@@ -16,14 +16,12 @@ pub enum Command {
 }
 
 impl Command {
-    pub fn encode(&self) -> heapless::Vec<u8, I2cSize> {
-        let mut buf = heapless::Vec::<_, I2cSize>::new();
-        serde_json_core::to_slice(self, &mut buf[..]).unwrap();
-        buf
+    pub fn encode(&self, buf: &mut [u8]) {
+        serde_json_core::to_slice(self, buf).unwrap();
     }
 
-    pub fn decode(buf: heapless::Vec<u8, I2cSize>) -> Option<Command> {
-        let cmd = serde_json_core::from_slice::<Command>(&buf[..]);
+    pub fn decode(buf: &[u8]) -> Option<Command> {
+        let cmd = serde_json_core::from_slice::<Command>(buf);
 
         match cmd {
             Ok((cmd, _)) => Some(cmd),
@@ -50,7 +48,7 @@ impl Navigation<pac::I2C1> {
     ) -> Result<Option<Command>, i2c::Error> {
         let mut buf = heapless::Vec::<_, I2cSize>::new();
         i2c.read(NAV_ADDR, &mut buf[..])?;
-        Ok(Command::decode(buf))
+        Ok(Command::decode(&buf))
     }
 }
 
@@ -71,7 +69,8 @@ impl FlightControl<pac::I2C1> {
         i2c: &mut i2c::I2c<pac::I2C1, PINS>,
         cmd: Command,
     ) -> Result<(), i2c::Error> {
-        let buf = cmd.encode();
+        let mut buf = heapless::Vec::<_, I2cSize>::new();
+        cmd.encode(&mut buf[..]);
         i2c.write(FC_ADDR, &buf[..])?;
         Ok(())
     }

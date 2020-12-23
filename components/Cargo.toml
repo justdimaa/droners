@@ -10,6 +10,7 @@ edition = "2018"
 embedded-hal = "0.2.4"
 stm32f4xx-hal = { git = "https://github.com/DimaaIO/stm32f4xx-hal", branch = "dma-tim", features = ["stm32f411", "rt"] }
 cortex-m = "0.6.4"
+nb = "1.0.0"
 
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-json-core = "0.2.0"

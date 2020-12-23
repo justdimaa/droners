@@ -5,7 +5,7 @@
 extern crate cortex_m_semihosting;
 extern crate panic_halt;
 
-use aeroflight_components::{internal, neo6m, sx1278};
+use aeroflight_components::{e32, internal, neo6m};
 use stm32f4xx_hal::{gpio, i2c, pac, prelude::*, serial, stm32, timer};
 
 type I2c1 = i2c::I2c<
@@ -34,7 +34,11 @@ type Serial2 = serial::Serial<
 
 type PcbLed = gpio::gpioc::PC13<gpio::Output<gpio::OpenDrain>>;
 
-type Controller = sx1278::E32<pac::USART1>;
+type ControllerAux = gpio::gpioa::PA8<gpio::Input<gpio::PullUp>>;
+type ControllerM0 = gpio::gpiob::PB14<gpio::Output<gpio::OpenDrain>>;
+type ControllerM1 = gpio::gpiob::PB15<gpio::Output<gpio::OpenDrain>>;
+type Controller = e32::E32<pac::USART1>;
+
 type GpsModule = neo6m::Neo6m<pac::USART2>;
 type FlightControl = internal::FlightControl<pac::I2C1>;
 
@@ -44,6 +48,10 @@ const APP: () = {
         i2c1: I2c1,
         serial1: Serial1,
         serial2: Serial2,
+
+        controller_aux: ControllerAux,
+        controller_m0: ControllerM0,
+        controller_m1: ControllerM1,
         controller: Controller,
         gps: GpsModule,
         fc: FlightControl,
@@ -104,7 +112,11 @@ const APP: () = {
         )
         .unwrap();
 
-        let controller = sx1278::E32::<pac::USART1>::new();
+        let controller_aux = gpioa.pa8.into_pull_up_input();
+        let controller_m0 = gpiob.pb14.into_open_drain_output();
+        let controller_m1 = gpiob.pb15.into_open_drain_output();
+        let controller = e32::E32::<pac::USART1>::new();
+
         let gps = neo6m::Neo6m::<pac::USART2>::new();
         let fc = internal::FlightControl::<pac::I2C1>::new();
 
@@ -115,7 +127,12 @@ const APP: () = {
             i2c1,
             serial1,
             serial2,
+
+            controller_aux,
+            controller_m0,
+            controller_m1,
             controller,
+
             gps,
             fc,
             tim2,
@@ -151,16 +168,22 @@ const APP: () = {
                 Ok(msg) => {
                     match msg {
                         Some(msg) => {
-                            let throttle = msg.right_trigger as u16 * 256;
+                            use aeroflight_components::e32::command::Command;
 
-                            match fc.send(
-                                i2c1,
-                                internal::Command::ThrottleBulk {
-                                    values: [Some(throttle); 4],
-                                },
-                            ) {
-                                Ok(_) => {}
-                                Err(_) => {}
+                            match msg {
+                                Command::Controller { right_trigger, .. } => {
+                                    let throttle = right_trigger as u16 * 256;
+
+                                    match fc.send(
+                                        i2c1,
+                                        internal::Command::ThrottleBulk {
+                                            values: [Some(throttle); 4],
+                                        },
+                                    ) {
+                                        Ok(_) => {}
+                                        Err(_) => {}
+                                    }
+                                }
                             }
                         }
                         None => {}

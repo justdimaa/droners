@@ -13,7 +13,7 @@ use stm32f4xx_hal::{
     dma::{self, traits::Stream},
     gpio, i2c, pac,
     prelude::*,
-    stm32, time,
+    stm32, timer,
 };
 
 // TIM3_CH1
@@ -84,6 +84,7 @@ fn get_dshot_dma_cfg() -> dma::config::DmaConfig {
 #[rtic::app(device = stm32f4xx_hal::pac, peripherals = true, monotonic = rtic::cyccnt::CYCCNT)]
 const APP: () = {
     struct Resources {
+        tim2: timer::Timer<pac::TIM2>,
         i2c1: I2c1,
         dma_transfer4: DmaTransfer4,
         dma_transfer5: DmaTransfer5,
@@ -169,7 +170,11 @@ const APP: () = {
         let (esc1, esc2, esc3, esc4): (Esc1, Esc2, Esc3, Esc4) =
             esc::tim3(tim3, clocks, DSHOT_600_MHZ.mhz());
 
+        let mut tim2 = timer::Timer::tim2(device.TIM2, 750.hz(), clocks);
+        tim2.listen(timer::Event::TimeOut);
+
         init::LateResources {
+            tim2,
             i2c1,
             dma_transfer4,
             dma_transfer5,
@@ -183,11 +188,58 @@ const APP: () = {
         }
     }
 
-    #[idle(spawn = [escs])]
-    fn idle(cx: idle::Context) -> ! {
+    #[idle]
+    fn idle(_: idle::Context) -> ! {
         loop {
-            cx.spawn.escs().unwrap();
             cortex_m::asm::wfi();
+        }
+    }
+
+    #[task(binds = TIM2, priority = 2, resources = [tim2, dma_transfer4, dma_transfer5, dma_transfer7, dma_transfer2, esc1, esc2, esc3, esc4])]
+    fn tim2(mut cx: tim2::Context) {
+        let tim2: &mut timer::Timer<pac::TIM2> = cx.resources.tim2;
+        let dma_transfer4 = &mut cx.resources.dma_transfer4;
+        let dma_transfer5 = &mut cx.resources.dma_transfer5;
+        let dma_transfer7 = &mut cx.resources.dma_transfer7;
+        let dma_transfer2 = &mut cx.resources.dma_transfer2;
+        let esc1 = &mut cx.resources.esc1;
+        let esc2 = &mut cx.resources.esc2;
+        let esc3 = &mut cx.resources.esc3;
+        let esc4 = &mut cx.resources.esc4;
+
+        tim2.clear_interrupt(timer::Event::TimeOut);
+
+        dma_transfer4.lock(|transfer: &mut DmaTransfer4| {
+            esc1.lock(|esc: &mut Esc1| {
+                esc.start(transfer);
+            });
+        });
+
+        dma_transfer5.lock(|transfer: &mut DmaTransfer5| {
+            esc2.lock(|esc: &mut Esc2| {
+                esc.start(transfer);
+            });
+        });
+
+        dma_transfer7.lock(|transfer: &mut DmaTransfer7| {
+            esc3.lock(|esc: &mut Esc3| {
+                esc.start(transfer);
+            });
+        });
+
+        dma_transfer2.lock(|transfer: &mut DmaTransfer2| {
+            esc4.lock(|esc: &mut Esc4| {
+                esc.start(transfer);
+            });
+        });
+
+        unsafe {
+            let tim3 = pac::TIM3::ptr();
+            (*tim3).cnt.modify(|_, w| w.bits(0));
+            (*tim3).dier.modify(|_, w| w.cc1de().enabled());
+            (*tim3).dier.modify(|_, w| w.cc2de().enabled());
+            (*tim3).dier.modify(|_, w| w.cc3de().enabled());
+            (*tim3).dier.modify(|_, w| w.cc4de().enabled());
         }
     }
 
@@ -225,52 +277,7 @@ const APP: () = {
         }
     }
 
-    #[task(resources = [dma_transfer4, dma_transfer5, dma_transfer7, dma_transfer2, esc1, esc2, esc3, esc4])]
-    fn escs(mut cx: escs::Context) {
-        let dma_transfer4 = &mut cx.resources.dma_transfer4;
-        let dma_transfer5 = &mut cx.resources.dma_transfer5;
-        let dma_transfer7 = &mut cx.resources.dma_transfer7;
-        let dma_transfer2 = &mut cx.resources.dma_transfer2;
-        let esc1 = &mut cx.resources.esc1;
-        let esc2 = &mut cx.resources.esc2;
-        let esc3 = &mut cx.resources.esc3;
-        let esc4 = &mut cx.resources.esc4;
-
-        dma_transfer4.lock(|transfer: &mut DmaTransfer4| {
-            esc1.lock(|esc: &mut Esc1| {
-                esc.start(transfer);
-            });
-        });
-
-        dma_transfer5.lock(|transfer: &mut DmaTransfer5| {
-            esc2.lock(|esc: &mut Esc2| {
-                esc.start(transfer);
-            });
-        });
-
-        dma_transfer7.lock(|transfer: &mut DmaTransfer7| {
-            esc3.lock(|esc: &mut Esc3| {
-                esc.start(transfer);
-            });
-        });
-
-        dma_transfer2.lock(|transfer: &mut DmaTransfer2| {
-            esc4.lock(|esc: &mut Esc4| {
-                esc.start(transfer);
-            });
-        });
-
-        unsafe {
-            let tim3 = pac::TIM3::ptr();
-            (*tim3).cnt.modify(|_, w| w.bits(0));
-            (*tim3).dier.modify(|_, w| w.cc1de().enabled());
-            (*tim3).dier.modify(|_, w| w.cc2de().enabled());
-            (*tim3).dier.modify(|_, w| w.cc3de().enabled());
-            (*tim3).dier.modify(|_, w| w.cc4de().enabled());
-        }
-    }
-
-    #[task(binds = DMA1_STREAM4, priority = 2, resources = [dma_transfer4, esc1])]
+    #[task(binds = DMA1_STREAM4, priority = 3, resources = [dma_transfer4, esc1])]
     fn dma1_stream4(cx: dma1_stream4::Context) {
         let dma_transfer: &mut DmaTransfer4 = cx.resources.dma_transfer4;
         let esc: &mut Esc1 = cx.resources.esc1;
@@ -283,7 +290,7 @@ const APP: () = {
         esc.pause(dma_transfer);
     }
 
-    #[task(binds = DMA1_STREAM5, priority = 2, resources = [dma_transfer5, esc2])]
+    #[task(binds = DMA1_STREAM5, priority = 3, resources = [dma_transfer5, esc2])]
     fn dma1_stream5(cx: dma1_stream5::Context) {
         let dma_transfer: &mut DmaTransfer5 = cx.resources.dma_transfer5;
         let esc: &mut Esc2 = cx.resources.esc2;
@@ -296,7 +303,7 @@ const APP: () = {
         esc.pause(dma_transfer);
     }
 
-    #[task(binds = DMA1_STREAM7, priority = 2, resources = [dma_transfer7, esc3])]
+    #[task(binds = DMA1_STREAM7, priority = 3, resources = [dma_transfer7, esc3])]
     fn dma1_stream7(cx: dma1_stream7::Context) {
         let dma_transfer: &mut DmaTransfer7 = cx.resources.dma_transfer7;
         let esc: &mut Esc3 = cx.resources.esc3;
@@ -309,7 +316,7 @@ const APP: () = {
         esc.pause(dma_transfer);
     }
 
-    #[task(binds = DMA1_STREAM2, priority = 2, resources = [dma_transfer2, esc4])]
+    #[task(binds = DMA1_STREAM2, priority = 3, resources = [dma_transfer2, esc4])]
     fn dma1_stream2(cx: dma1_stream2::Context) {
         let dma_transfer: &mut DmaTransfer2 = cx.resources.dma_transfer2;
         let esc: &mut Esc4 = cx.resources.esc4;

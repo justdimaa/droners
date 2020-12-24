@@ -46,6 +46,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bare-metal"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8fe8f5a8a398345e52358e18ff07cc17a568fbca5c6f73873d3a62056309603"
+
+[[package]]
 name = "bitfield"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -79,7 +85,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88cdafeafba636c00c467ded7f1587210725a1adfab0c24028a7844b87738263"
 dependencies = [
  "aligned",
- "bare-metal",
+ "bare-metal 0.2.5",
  "bitfield",
  "volatile-register",
 ]
@@ -107,12 +113,11 @@ dependencies = [
 
 [[package]]
 name = "cortex-m-rtic"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b30efcb6b7920d9016182c485687f0012487032a14c415d2fce6e9862ef8260e"
+version = "0.6.0-alpha.0"
+source = "git+https://github.com/rtic-rs/cortex-m-rtic?rev=e65a86f6962218b66a14b7ccc40eec7976880eba#e65a86f6962218b66a14b7ccc40eec7976880eba"
 dependencies = [
+ "bare-metal 1.0.0",
  "cortex-m",
- "cortex-m-rt",
  "cortex-m-rtic-macros",
  "heapless",
  "rtic-core",
@@ -121,10 +126,10 @@ dependencies = [
 
 [[package]]
 name = "cortex-m-rtic-macros"
-version = "0.5.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9a1a6a4c9550373038c0e21a78d44d529bd697c25bbf6b8004bddc6e63b119c7"
+version = "0.6.0-alpha.0"
+source = "git+https://github.com/rtic-rs/cortex-m-rtic?rev=e65a86f6962218b66a14b7ccc40eec7976880eba#e65a86f6962218b66a14b7ccc40eec7976880eba"
 dependencies = [
+ "proc-macro-error",
  "proc-macro2",
  "quote",
  "rtic-syntax",
@@ -372,6 +377,30 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ac74c624d6b2d21f425f752262f42188365d7b8ff1aff74c82e45136510a4857"
 
 [[package]]
+name = "proc-macro-error"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "da25490ff9892aab3fcf7c36f08cfb902dd3e71ca0f9f9517bea02a73a5ce38c"
+dependencies = [
+ "proc-macro-error-attr",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "version_check",
+]
+
+[[package]]
+name = "proc-macro-error-attr"
+version = "1.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a1be40180e52ecc98ad80b184934baf3d0d29f979574e439af5a55274b35f869"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "version_check",
+]
+
+[[package]]
 name = "proc-macro2"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -439,12 +468,12 @@ checksum = "8bd58a6949de8ff797a346a28d9f13f7b8f54fa61bb5e3cb0985a4efb497a5ef"
 
 [[package]]
 name = "rtic-syntax"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8152fcaa845720d61e6cc570548b89144c2c307f18a480bbd97e55e9f6eeff04"
+version = "0.5.0-alpha.0"
+source = "git+https://github.com/rtic-rs/rtic-syntax#4121a0206a9946d756d79c5b56f547209ab784b5"
 dependencies = [
  "indexmap",
  "proc-macro2",
+ "quote",
  "syn",
 ]
 
@@ -526,7 +555,7 @@ version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "11460b4de3a84f072e2cf6e76306c64d27f405a0e83bace0a726f555ddf4bf33"
 dependencies = [
- "bare-metal",
+ "bare-metal 0.2.5",
  "cortex-m",
  "cortex-m-rt",
  "vcell",
@@ -537,7 +566,7 @@ name = "stm32f4xx-hal"
 version = "0.8.3"
 source = "git+https://github.com/DimaaIO/stm32f4xx-hal?branch=dma-tim#2943e1e3f6091e60d5a623d82f593e2f23663760"
 dependencies = [
- "bare-metal",
+ "bare-metal 0.2.5",
  "cast",
  "cortex-m",
  "cortex-m-rt",

@@ -5,45 +5,48 @@
 extern crate cortex_m_semihosting;
 extern crate panic_halt;
 
-use droners_components::{e32, internal, neo6m};
-use stm32f4xx_hal::{gpio, i2c, pac, prelude::*, serial, stm32, timer};
+#[rtic::app(device = stm32f4xx_hal::pac, peripherals = true)]
+mod app {
+    use droners_components::{e32, internal, neo6m};
+    use stm32f4xx_hal::{gpio, i2c, pac, prelude::*, serial, stm32, timer};
 
-type I2c1 = i2c::I2c<
-    pac::I2C1,
-    (
-        gpio::gpiob::PB6<gpio::AlternateOD<gpio::AF4>>,
-        gpio::gpiob::PB7<gpio::AlternateOD<gpio::AF4>>,
-    ),
->;
+    type I2c1 = i2c::I2c<
+        pac::I2C1,
+        (
+            gpio::gpiob::PB6<gpio::AlternateOD<gpio::AF4>>,
+            gpio::gpiob::PB7<gpio::AlternateOD<gpio::AF4>>,
+        ),
+    >;
 
-type Serial1 = serial::Serial<
-    pac::USART1,
-    (
-        gpio::gpioa::PA9<gpio::Alternate<gpio::AF7>>,
-        gpio::gpioa::PA10<gpio::Alternate<gpio::AF7>>,
-    ),
->;
+    type Serial1 = serial::Serial<
+        pac::USART1,
+        (
+            gpio::gpioa::PA9<gpio::Alternate<gpio::AF7>>,
+            gpio::gpioa::PA10<gpio::Alternate<gpio::AF7>>,
+        ),
+    >;
 
-type Serial2 = serial::Serial<
-    pac::USART2,
-    (
-        gpio::gpioa::PA2<gpio::Alternate<gpio::AF7>>,
-        gpio::gpioa::PA3<gpio::Alternate<gpio::AF7>>,
-    ),
->;
+    type Serial2 = serial::Serial<
+        pac::USART2,
+        (
+            gpio::gpioa::PA2<gpio::Alternate<gpio::AF7>>,
+            gpio::gpioa::PA3<gpio::Alternate<gpio::AF7>>,
+        ),
+    >;
 
-type PcbLed = gpio::gpioc::PC13<gpio::Output<gpio::OpenDrain>>;
+    type Timer2 = timer::Timer<pac::TIM2>;
 
-type ControllerAux = gpio::gpioa::PA8<gpio::Input<gpio::PullUp>>;
-type ControllerM0 = gpio::gpiob::PB14<gpio::Output<gpio::OpenDrain>>;
-type ControllerM1 = gpio::gpiob::PB15<gpio::Output<gpio::OpenDrain>>;
-type Controller = e32::E32<pac::USART1>;
+    type PcbLed = gpio::gpioc::PC13<gpio::Output<gpio::OpenDrain>>;
 
-type GpsModule = neo6m::Neo6m<pac::USART2>;
-type FlightControl = internal::FlightControl<pac::I2C1>;
+    type ControllerAux = gpio::gpioa::PA8<gpio::Input<gpio::PullUp>>;
+    type ControllerM0 = gpio::gpiob::PB14<gpio::Output<gpio::OpenDrain>>;
+    type ControllerM1 = gpio::gpiob::PB15<gpio::Output<gpio::OpenDrain>>;
+    type Controller = e32::E32<pac::USART1>;
 
-#[rtic::app(device = stm32f4xx_hal::pac, peripherals = true, monotonic = rtic::cyccnt::CYCCNT)]
-const APP: () = {
+    type GpsModule = neo6m::Neo6m<pac::USART2>;
+    type FlightControl = internal::FlightControl<pac::I2C1>;
+
+    #[resources]
     struct Resources {
         i2c1: I2c1,
         serial1: Serial1,
@@ -147,60 +150,77 @@ const APP: () = {
         }
     }
 
-    #[task(binds = TIM2, resources = [tim2, i2c1, fc, pcb_led])]
-    fn tim2(cx: tim2::Context) {
-        let tim2: &mut timer::Timer<pac::TIM2> = cx.resources.tim2;
-        let pcb_led: &mut PcbLed = cx.resources.pcb_led;
+    #[task(binds = TIM2, resources = [tim2, pcb_led])]
+    fn tim2(mut cx: tim2::Context) {
+        let tim = &mut cx.resources.tim2;
+        let pcb_led = &mut cx.resources.pcb_led;
 
-        tim2.clear_interrupt(timer::Event::TimeOut);
-        pcb_led.toggle().ok();
+        tim.lock(|tim: &mut Timer2| {
+            tim.clear_interrupt(timer::Event::TimeOut);
+        });
+
+        pcb_led.lock(|pcb_led: &mut PcbLed| {
+            pcb_led.toggle().ok();
+        });
     }
 
     #[task(binds = USART1, resources = [serial1, controller, i2c1, fc])]
-    fn usart1(cx: usart1::Context) {
-        let serial1: &mut Serial1 = cx.resources.serial1;
-        let controller: &mut Controller = cx.resources.controller;
-        let i2c1: &mut I2c1 = cx.resources.i2c1;
-        let fc: &mut FlightControl = cx.resources.fc;
+    fn usart1(mut cx: usart1::Context) {
+        let serial = &mut cx.resources.serial1;
+        let controller = &mut cx.resources.controller;
+        let i2c = &mut cx.resources.i2c1;
+        let fc = &mut cx.resources.fc;
 
-        while serial1.is_rxne() {
-            match controller.read(serial1) {
-                Ok(msg) => {
-                    match msg {
-                        Some(msg) => {
-                            use droners_components::e32::command::Command;
-
-                            match msg {
-                                Command::Controller { right_trigger, .. } => {
-                                    let throttle = right_trigger as u16 * 256;
-
-                                    match fc.send(
-                                        i2c1,
-                                        internal::Command::ThrottleBulk {
-                                            values: [Some(throttle); 4],
-                                        },
-                                    ) {
-                                        Ok(_) => {}
-                                        Err(_) => {}
-                                    }
-                                }
-                            }
-                        }
-                        None => {}
+        let msg = (serial, controller).lock(|serial: &mut Serial1, controller: &mut Controller| {
+            while serial.is_rxne() {
+                match controller.read(serial) {
+                    Ok(msg) => {
+                        return msg;
                     }
-
-                    break;
+                    Err(_) => {
+                        return None;
+                    }
                 }
-                Err(_) => {}
             }
+
+            None
+        });
+
+        match msg {
+            Some(msg) => {
+                use droners_components::e32::command::Command;
+
+                match msg {
+                    Command::Controller { right_trigger, .. } => {
+                        let throttle = right_trigger as u16 * 256;
+
+                        (i2c, fc).lock(|i2c: &mut I2c1, fc: &mut FlightControl| {
+                            match fc.send(
+                                i2c,
+                                internal::Command::ThrottleBulk {
+                                    values: [Some(throttle); 4],
+                                },
+                            ) {
+                                Ok(_) => {}
+                                Err(_) => {}
+                            }
+                        });
+                    }
+                }
+            }
+            None => {}
         }
     }
 
     #[task(binds = USART2, resources = [serial2, gps])]
-    fn usart2(cx: usart2::Context) {
-        let serial2: &mut Serial2 = cx.resources.serial2;
-        let gps: &mut GpsModule = cx.resources.gps;
+    fn usart2(mut cx: usart2::Context) {
+        let serial = &mut cx.resources.serial2;
+        let gps = &mut cx.resources.gps;
 
-        if let Some(v) = gps.read(serial2) {}
+        (serial, gps).lock(
+            |serial: &mut Serial2, gps: &mut GpsModule| {
+                if let Some(v) = gps.read(serial) {}
+            },
+        )
     }
-};
+}

@@ -1,71 +1,11 @@
 #![no_main]
 #![no_std]
 
+use stm32f4xx_hal::dma;
+
 #[macro_use]
 extern crate cortex_m_semihosting;
 extern crate panic_halt;
-
-use core::mem;
-
-use droners_components::{esc, internal};
-use esc::DSHOT_600_MHZ;
-use stm32f4xx_hal::{
-    dma::{self, traits::Stream},
-    gpio, i2c, pac,
-    prelude::*,
-    stm32, timer,
-};
-
-// TIM3_CH1
-type DmaTransfer4 = dma::Transfer<
-    dma::Stream4<pac::DMA1>,
-    dma::Channel5,
-    dma::traits::CCR1<pac::TIM3>,
-    dma::MemoryToPeripheral,
-    &'static mut [u16; esc::DMA_BUFFER_LEN],
->;
-
-// TIM3_CH2
-type DmaTransfer5 = dma::Transfer<
-    dma::Stream5<pac::DMA1>,
-    dma::Channel5,
-    dma::traits::CCR2<pac::TIM3>,
-    dma::MemoryToPeripheral,
-    &'static mut [u16; esc::DMA_BUFFER_LEN],
->;
-
-// TIM3_CH3
-type DmaTransfer7 = dma::Transfer<
-    dma::Stream7<pac::DMA1>,
-    dma::Channel5,
-    dma::traits::CCR3<pac::TIM3>,
-    dma::MemoryToPeripheral,
-    &'static mut [u16; esc::DMA_BUFFER_LEN],
->;
-
-// TIM3_CH4
-type DmaTransfer2 = dma::Transfer<
-    dma::Stream2<pac::DMA1>,
-    dma::Channel5,
-    dma::traits::CCR4<pac::TIM3>,
-    dma::MemoryToPeripheral,
-    &'static mut [u16; esc::DMA_BUFFER_LEN],
->;
-
-type I2c1 = i2c::I2c<
-    pac::I2C1,
-    (
-        gpio::gpiob::PB6<gpio::AlternateOD<gpio::AF4>>,
-        gpio::gpiob::PB7<gpio::AlternateOD<gpio::AF4>>,
-    ),
->;
-
-type Navigation = internal::Navigation<pac::I2C1>;
-
-type Esc1 = esc::EscChannels<DmaTransfer4>;
-type Esc2 = esc::EscChannels<DmaTransfer5>;
-type Esc3 = esc::EscChannels<DmaTransfer7>;
-type Esc4 = esc::EscChannels<DmaTransfer2>;
 
 fn get_dshot_dma_cfg() -> dma::config::DmaConfig {
     dma::config::DmaConfig::default()
@@ -81,10 +21,77 @@ fn get_dshot_dma_cfg() -> dma::config::DmaConfig {
         .priority(dma::config::Priority::High)
 }
 
-#[rtic::app(device = stm32f4xx_hal::pac, peripherals = true, monotonic = rtic::cyccnt::CYCCNT)]
-const APP: () = {
+#[rtic::app(device = stm32f4xx_hal::pac, peripherals = true)]
+mod app {
+    use core::mem;
+
+    use droners_components::{esc, internal};
+    use esc::DSHOT_600_MHZ;
+    use stm32f4xx_hal::{
+        dma::{self, traits::Stream},
+        gpio, i2c, pac,
+        prelude::*,
+        stm32, timer,
+    };
+
+    use crate::get_dshot_dma_cfg;
+
+    // TIM3_CH1
+    type DmaTransfer4 = dma::Transfer<
+        dma::Stream4<pac::DMA1>,
+        dma::Channel5,
+        dma::traits::CCR1<pac::TIM3>,
+        dma::MemoryToPeripheral,
+        &'static mut [u16; esc::DMA_BUFFER_LEN],
+    >;
+
+    // TIM3_CH2
+    type DmaTransfer5 = dma::Transfer<
+        dma::Stream5<pac::DMA1>,
+        dma::Channel5,
+        dma::traits::CCR2<pac::TIM3>,
+        dma::MemoryToPeripheral,
+        &'static mut [u16; esc::DMA_BUFFER_LEN],
+    >;
+
+    // TIM3_CH3
+    type DmaTransfer7 = dma::Transfer<
+        dma::Stream7<pac::DMA1>,
+        dma::Channel5,
+        dma::traits::CCR3<pac::TIM3>,
+        dma::MemoryToPeripheral,
+        &'static mut [u16; esc::DMA_BUFFER_LEN],
+    >;
+
+    // TIM3_CH4
+    type DmaTransfer2 = dma::Transfer<
+        dma::Stream2<pac::DMA1>,
+        dma::Channel5,
+        dma::traits::CCR4<pac::TIM3>,
+        dma::MemoryToPeripheral,
+        &'static mut [u16; esc::DMA_BUFFER_LEN],
+    >;
+
+    type I2c1 = i2c::I2c<
+        pac::I2C1,
+        (
+            gpio::gpiob::PB6<gpio::AlternateOD<gpio::AF4>>,
+            gpio::gpiob::PB7<gpio::AlternateOD<gpio::AF4>>,
+        ),
+    >;
+
+    type Timer2 = timer::Timer<pac::TIM2>;
+
+    type Navigation = internal::Navigation<pac::I2C1>;
+
+    type Esc1 = esc::EscChannels<DmaTransfer4>;
+    type Esc2 = esc::EscChannels<DmaTransfer5>;
+    type Esc3 = esc::EscChannels<DmaTransfer7>;
+    type Esc4 = esc::EscChannels<DmaTransfer2>;
+
+    #[resources]
     struct Resources {
-        tim2: timer::Timer<pac::TIM2>,
+        tim2: Timer2,
         i2c1: I2c1,
         dma_transfer4: DmaTransfer4,
         dma_transfer5: DmaTransfer5,
@@ -197,40 +204,34 @@ const APP: () = {
 
     #[task(binds = TIM2, priority = 2, resources = [tim2, dma_transfer4, dma_transfer5, dma_transfer7, dma_transfer2, esc1, esc2, esc3, esc4])]
     fn tim2(mut cx: tim2::Context) {
-        let tim2: &mut timer::Timer<pac::TIM2> = cx.resources.tim2;
-        let dma_transfer4 = &mut cx.resources.dma_transfer4;
-        let dma_transfer5 = &mut cx.resources.dma_transfer5;
-        let dma_transfer7 = &mut cx.resources.dma_transfer7;
-        let dma_transfer2 = &mut cx.resources.dma_transfer2;
+        let tim = &mut cx.resources.tim2;
+        let transfer4 = &mut cx.resources.dma_transfer4;
+        let transfer5 = &mut cx.resources.dma_transfer5;
+        let transfer7 = &mut cx.resources.dma_transfer7;
+        let transfer2 = &mut cx.resources.dma_transfer2;
         let esc1 = &mut cx.resources.esc1;
         let esc2 = &mut cx.resources.esc2;
         let esc3 = &mut cx.resources.esc3;
         let esc4 = &mut cx.resources.esc4;
 
-        tim2.clear_interrupt(timer::Event::TimeOut);
-
-        dma_transfer4.lock(|transfer: &mut DmaTransfer4| {
-            esc1.lock(|esc: &mut Esc1| {
-                esc.start(transfer);
-            });
+        tim.lock(|tim: &mut Timer2| {
+            tim.clear_interrupt(timer::Event::TimeOut);
         });
 
-        dma_transfer5.lock(|transfer: &mut DmaTransfer5| {
-            esc2.lock(|esc: &mut Esc2| {
-                esc.start(transfer);
-            });
+        (transfer4, esc1).lock(|transfer: &mut DmaTransfer4, esc: &mut Esc1| {
+            esc.start(transfer);
         });
 
-        dma_transfer7.lock(|transfer: &mut DmaTransfer7| {
-            esc3.lock(|esc: &mut Esc3| {
-                esc.start(transfer);
-            });
+        (transfer5, esc2).lock(|transfer: &mut DmaTransfer5, esc: &mut Esc2| {
+            esc.start(transfer);
         });
 
-        dma_transfer2.lock(|transfer: &mut DmaTransfer2| {
-            esc4.lock(|esc: &mut Esc4| {
-                esc.start(transfer);
-            });
+        (transfer7, esc3).lock(|transfer: &mut DmaTransfer7, esc: &mut Esc3| {
+            esc.start(transfer);
+        });
+
+        (transfer2, esc4).lock(|transfer: &mut DmaTransfer2, esc: &mut Esc4| {
+            esc.start(transfer);
         });
 
         unsafe {
@@ -245,31 +246,33 @@ const APP: () = {
 
     #[task(binds = I2C1_EV, resources = [i2c1, nav, esc1, esc2, esc3, esc4])]
     fn i2c1_ev(mut cx: i2c1_ev::Context) {
-        let i2c1: &mut I2c1 = cx.resources.i2c1;
-        let nav: &mut Navigation = cx.resources.nav;
-        let esc1 = &mut cx.resources.esc1;
-        let esc2 = &mut cx.resources.esc2;
-        let esc3 = &mut cx.resources.esc3;
-        let esc4 = &mut cx.resources.esc4;
+        let i2c = &mut cx.resources.i2c1;
+        let nav = &mut cx.resources.nav;
 
-        if let Ok(cmd) = nav.read(i2c1) {
+        let cmd = (i2c, nav).lock(|i2c: &mut I2c1, nav: &mut Navigation| nav.read(i2c));
+
+        if let Ok(cmd) = cmd {
             if let Some(cmd) = cmd {
                 match cmd {
                     internal::Command::ThrottleBulk { values } => {
                         if let Some(throttle) = values[0] {
-                            esc1.lock(|esc: &mut Esc1| esc.set_throttle(throttle));
+                            let esc = &mut cx.resources.esc1;
+                            esc.lock(|esc: &mut Esc1| esc.set_throttle(throttle));
                         }
 
                         if let Some(throttle) = values[1] {
-                            esc2.lock(|esc: &mut Esc2| esc.set_throttle(throttle));
+                            let esc = &mut cx.resources.esc2;
+                            esc.lock(|esc: &mut Esc2| esc.set_throttle(throttle));
                         }
 
                         if let Some(throttle) = values[2] {
-                            esc3.lock(|esc: &mut Esc3| esc.set_throttle(throttle));
+                            let esc = &mut cx.resources.esc3;
+                            esc.lock(|esc: &mut Esc3| esc.set_throttle(throttle));
                         }
 
                         if let Some(throttle) = values[3] {
-                            esc4.lock(|esc: &mut Esc4| esc.set_throttle(throttle));
+                            let esc = &mut cx.resources.esc4;
+                            esc.lock(|esc: &mut Esc4| esc.set_throttle(throttle));
                         }
                     }
                 }
@@ -278,58 +281,74 @@ const APP: () = {
     }
 
     #[task(binds = DMA1_STREAM4, priority = 3, resources = [dma_transfer4, esc1])]
-    fn dma1_stream4(cx: dma1_stream4::Context) {
-        let dma_transfer: &mut DmaTransfer4 = cx.resources.dma_transfer4;
-        let esc: &mut Esc1 = cx.resources.esc1;
+    fn dma1_stream4(mut cx: dma1_stream4::Context) {
+        let transfer = &mut cx.resources.dma_transfer4;
+        let esc = &mut cx.resources.esc1;
 
         if !dma::Stream4::<pac::DMA1>::get_transfer_complete_flag() {
             return;
         }
 
-        dma_transfer.clear_transfer_complete_interrupt();
-        esc.pause(dma_transfer);
+        transfer.lock(|transfer| {
+            transfer.clear_transfer_complete_interrupt();
+
+            esc.lock(|esc| {
+                esc.pause(transfer);
+            })
+        });
     }
 
     #[task(binds = DMA1_STREAM5, priority = 3, resources = [dma_transfer5, esc2])]
-    fn dma1_stream5(cx: dma1_stream5::Context) {
-        let dma_transfer: &mut DmaTransfer5 = cx.resources.dma_transfer5;
-        let esc: &mut Esc2 = cx.resources.esc2;
+    fn dma1_stream5(mut cx: dma1_stream5::Context) {
+        let transfer = &mut cx.resources.dma_transfer5;
+        let esc = &mut cx.resources.esc2;
 
         if !dma::Stream5::<pac::DMA1>::get_transfer_complete_flag() {
             return;
         }
 
-        dma_transfer.clear_transfer_complete_interrupt();
-        esc.pause(dma_transfer);
+        transfer.lock(|transfer| {
+            transfer.clear_transfer_complete_interrupt();
+
+            esc.lock(|esc| {
+                esc.pause(transfer);
+            })
+        });
     }
 
     #[task(binds = DMA1_STREAM7, priority = 3, resources = [dma_transfer7, esc3])]
-    fn dma1_stream7(cx: dma1_stream7::Context) {
-        let dma_transfer: &mut DmaTransfer7 = cx.resources.dma_transfer7;
-        let esc: &mut Esc3 = cx.resources.esc3;
+    fn dma1_stream7(mut cx: dma1_stream7::Context) {
+        let transfer = &mut cx.resources.dma_transfer7;
+        let esc = &mut cx.resources.esc3;
 
         if !dma::Stream7::<pac::DMA1>::get_transfer_complete_flag() {
             return;
         }
 
-        dma_transfer.clear_transfer_complete_interrupt();
-        esc.pause(dma_transfer);
+        transfer.lock(|transfer| {
+            transfer.clear_transfer_complete_interrupt();
+
+            esc.lock(|esc| {
+                esc.pause(transfer);
+            })
+        });
     }
 
     #[task(binds = DMA1_STREAM2, priority = 3, resources = [dma_transfer2, esc4])]
-    fn dma1_stream2(cx: dma1_stream2::Context) {
-        let dma_transfer: &mut DmaTransfer2 = cx.resources.dma_transfer2;
-        let esc: &mut Esc4 = cx.resources.esc4;
+    fn dma1_stream2(mut cx: dma1_stream2::Context) {
+        let transfer = &mut cx.resources.dma_transfer2;
+        let esc = &mut cx.resources.esc4;
 
         if !dma::Stream2::<pac::DMA1>::get_transfer_complete_flag() {
             return;
         }
 
-        dma_transfer.clear_transfer_complete_interrupt();
-        esc.pause(dma_transfer);
-    }
+        transfer.lock(|transfer| {
+            transfer.clear_transfer_complete_interrupt();
 
-    extern "C" {
-        fn EXTI2();
+            esc.lock(|esc| {
+                esc.pause(transfer);
+            })
+        });
     }
-};
+}

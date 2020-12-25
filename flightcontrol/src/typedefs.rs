@@ -1,4 +1,4 @@
-use droners_components::{e32, esc, neo6m};
+use droners_components::{e32, esc, ublox};
 use stm32f4xx_hal::{dma, gpio, pac, serial, timer};
 
 pub type Timer2 = timer::Timer<pac::TIM2>;
@@ -65,4 +65,4 @@ pub type ControllerM0 = gpio::gpiob::PB14<gpio::Output<gpio::OpenDrain>>;
 pub type ControllerM1 = gpio::gpiob::PB15<gpio::Output<gpio::OpenDrain>>;
 pub type Controller = e32::E32<pac::USART1>;
 
-pub type GpsModule = neo6m::Neo6m<pac::USART2>;
+pub type GpsModule = ublox::Ublox<Serial2>;

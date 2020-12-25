@@ -3,4 +3,4 @@
 
 pub mod e32;
 pub mod esc;
-pub mod neo6m;
+pub mod ublox;

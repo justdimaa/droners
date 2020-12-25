@@ -27,7 +27,7 @@ fn get_dshot_dma_cfg() -> dma::config::DmaConfig {
 mod app {
     use core::mem;
 
-    use droners_components::{e32, esc, neo6m};
+    use droners_components::{e32, esc, ublox};
     use esc::DSHOT_600_MHZ;
     use stm32f4xx_hal::{
         dma::{self, traits::Stream},
@@ -167,7 +167,7 @@ mod app {
         let controller_m1 = gpiob.pb15.into_open_drain_output();
         let controller = e32::E32::<pac::USART1>::new();
 
-        let gps = neo6m::Neo6m::<pac::USART2>::new();
+        let gps = ublox::Ublox::<Serial2>::new();
 
         init::LateResources {
             tim2,
@@ -261,11 +261,13 @@ mod app {
         let serial = &mut cx.resources.serial2;
         let gps = &mut cx.resources.gps;
 
-        (serial, gps).lock(
-            |serial: &mut Serial2, gps: &mut GpsModule| {
-                if let Some(_) = gps.read(serial) {}
-            },
-        )
+        serial.lock(|serial: &mut Serial2| {
+            if serial.is_rxne() {
+                gps.lock(|gps: &mut GpsModule| {
+                    let _ = gps.read(serial);
+                })
+            }
+        });
     }
 
     #[task(binds = TIM2, priority = 2, resources = [tim2, dma_transfer4, dma_transfer5, dma_transfer7, dma_transfer2, esc1, esc2, esc3, esc4])]

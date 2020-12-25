@@ -1,11 +1,13 @@
 #![no_main]
 #![no_std]
+#![deny(warnings)]
 
 use stm32f4xx_hal::dma;
 
-#[macro_use]
 extern crate cortex_m_semihosting;
 extern crate panic_halt;
+
+mod typedefs;
 
 fn get_dshot_dma_cfg() -> dma::config::DmaConfig {
     dma::config::DmaConfig::default()
@@ -25,108 +27,103 @@ fn get_dshot_dma_cfg() -> dma::config::DmaConfig {
 mod app {
     use core::mem;
 
-    use droners_components::{esc, internal};
+    use droners_components::{e32, esc, neo6m};
     use esc::DSHOT_600_MHZ;
     use stm32f4xx_hal::{
         dma::{self, traits::Stream},
-        gpio, i2c, pac,
+        pac,
         prelude::*,
-        stm32, timer,
+        serial, stm32, timer,
     };
 
     use crate::get_dshot_dma_cfg;
-
-    // TIM3_CH1
-    type DmaTransfer4 = dma::Transfer<
-        dma::Stream4<pac::DMA1>,
-        dma::Channel5,
-        dma::traits::CCR1<pac::TIM3>,
-        dma::MemoryToPeripheral,
-        &'static mut [u16; esc::DMA_BUFFER_LEN],
-    >;
-
-    // TIM3_CH2
-    type DmaTransfer5 = dma::Transfer<
-        dma::Stream5<pac::DMA1>,
-        dma::Channel5,
-        dma::traits::CCR2<pac::TIM3>,
-        dma::MemoryToPeripheral,
-        &'static mut [u16; esc::DMA_BUFFER_LEN],
-    >;
-
-    // TIM3_CH3
-    type DmaTransfer7 = dma::Transfer<
-        dma::Stream7<pac::DMA1>,
-        dma::Channel5,
-        dma::traits::CCR3<pac::TIM3>,
-        dma::MemoryToPeripheral,
-        &'static mut [u16; esc::DMA_BUFFER_LEN],
-    >;
-
-    // TIM3_CH4
-    type DmaTransfer2 = dma::Transfer<
-        dma::Stream2<pac::DMA1>,
-        dma::Channel5,
-        dma::traits::CCR4<pac::TIM3>,
-        dma::MemoryToPeripheral,
-        &'static mut [u16; esc::DMA_BUFFER_LEN],
-    >;
-
-    type I2c1 = i2c::I2c<
-        pac::I2C1,
-        (
-            gpio::gpiob::PB6<gpio::AlternateOD<gpio::AF4>>,
-            gpio::gpiob::PB7<gpio::AlternateOD<gpio::AF4>>,
-        ),
-    >;
-
-    type Timer2 = timer::Timer<pac::TIM2>;
-
-    type Navigation = internal::Navigation<pac::I2C1>;
-
-    type Esc1 = esc::EscChannels<DmaTransfer4>;
-    type Esc2 = esc::EscChannels<DmaTransfer5>;
-    type Esc3 = esc::EscChannels<DmaTransfer7>;
-    type Esc4 = esc::EscChannels<DmaTransfer2>;
+    use crate::typedefs::*;
 
     #[resources]
     struct Resources {
         tim2: Timer2,
-        i2c1: I2c1,
+
+        serial1: Serial1,
+        serial2: Serial2,
+
         dma_transfer4: DmaTransfer4,
         dma_transfer5: DmaTransfer5,
         dma_transfer7: DmaTransfer7,
         dma_transfer2: DmaTransfer2,
-        nav: Navigation,
+
         esc1: Esc1,
         esc2: Esc2,
         esc3: Esc3,
         esc4: Esc4,
+
+        controller_aux: ControllerAux,
+        controller_m0: ControllerM0,
+        controller_m1: ControllerM1,
+        controller: Controller,
+
+        gps: GpsModule,
     }
 
     #[init]
     fn init(cx: init::Context) -> init::LateResources {
-        let core: cortex_m::Peripherals = cx.core;
+        let _core: cortex_m::Peripherals = cx.core;
         let device: stm32::Peripherals = cx.device;
 
         let rcc = device.RCC.constrain();
 
         let clocks = rcc.cfgr.use_hse(25.mhz()).sysclk(48.mhz()).freeze();
 
+        let gpioa = device.GPIOA.split();
         let gpiob = device.GPIOB.split();
+
         gpiob.pb4.into_alternate_af2();
         gpiob.pb5.into_alternate_af2();
         gpiob.pb0.into_alternate_af2();
         gpiob.pb1.into_alternate_af2();
 
-        let tim3 = device.TIM3;
+        let mut tim2 = timer::Timer::tim2(device.TIM2, 750.hz(), clocks);
+        tim2.listen(timer::Event::TimeOut);
+
+        let serial1 = serial::Serial::usart1(
+            device.USART1,
+            (
+                gpioa.pa9.into_alternate_af7(),
+                gpioa.pa10.into_alternate_af7(),
+            ),
+            serial::config::Config::default()
+                .baudrate(9600.bps())
+                .parity_even()
+                .stopbits(serial::config::StopBits::STOP1)
+                .wordlength_8(),
+            clocks,
+        )
+        .unwrap();
+
+        let serial2 = serial::Serial::usart2(
+            device.USART2,
+            (
+                gpioa.pa2.into_alternate_af7(),
+                gpioa.pa3.into_alternate_af7(),
+            ),
+            serial::config::Config::default()
+                .baudrate(9600.bps())
+                .parity_even()
+                .stopbits(serial::config::StopBits::STOP1)
+                .wordlength_8(),
+            clocks,
+        )
+        .unwrap();
 
         let dma1_streams = dma::StreamsTuple::new(device.DMA1);
 
-        let ccr1_tim3 = dma::traits::CCR1::<pac::TIM3>(unsafe { mem::transmute_copy(&tim3) });
-        let ccr2_tim3 = dma::traits::CCR2::<pac::TIM3>(unsafe { mem::transmute_copy(&tim3) });
-        let ccr3_tim3 = dma::traits::CCR3::<pac::TIM3>(unsafe { mem::transmute_copy(&tim3) });
-        let ccr4_tim3 = dma::traits::CCR4::<pac::TIM3>(unsafe { mem::transmute_copy(&tim3) });
+        let ccr1_tim3 =
+            dma::traits::CCR1::<pac::TIM3>(unsafe { mem::transmute_copy(&device.TIM3) });
+        let ccr2_tim3 =
+            dma::traits::CCR2::<pac::TIM3>(unsafe { mem::transmute_copy(&device.TIM3) });
+        let ccr3_tim3 =
+            dma::traits::CCR3::<pac::TIM3>(unsafe { mem::transmute_copy(&device.TIM3) });
+        let ccr4_tim3 =
+            dma::traits::CCR4::<pac::TIM3>(unsafe { mem::transmute_copy(&device.TIM3) });
 
         let dma_cfg = get_dshot_dma_cfg();
 
@@ -162,36 +159,38 @@ mod app {
             dma_cfg,
         );
 
-        let i2c1 = i2c::I2c::i2c1(
-            device.I2C1,
-            (
-                gpiob.pb6.into_alternate_af4_open_drain(),
-                gpiob.pb7.into_alternate_af4_open_drain(),
-            ),
-            400.khz(),
-            clocks,
-        );
-
-        let nav = internal::Navigation::new();
-
         let (esc1, esc2, esc3, esc4): (Esc1, Esc2, Esc3, Esc4) =
-            esc::tim3(tim3, clocks, DSHOT_600_MHZ.mhz());
+            esc::tim3(device.TIM3, clocks, DSHOT_600_MHZ.mhz());
 
-        let mut tim2 = timer::Timer::tim2(device.TIM2, 750.hz(), clocks);
-        tim2.listen(timer::Event::TimeOut);
+        let controller_aux = gpioa.pa8.into_pull_up_input();
+        let controller_m0 = gpiob.pb14.into_open_drain_output();
+        let controller_m1 = gpiob.pb15.into_open_drain_output();
+        let controller = e32::E32::<pac::USART1>::new();
+
+        let gps = neo6m::Neo6m::<pac::USART2>::new();
 
         init::LateResources {
             tim2,
-            i2c1,
+
+            serial1,
+            serial2,
+
             dma_transfer4,
             dma_transfer5,
             dma_transfer7,
             dma_transfer2,
-            nav,
+
             esc1,
             esc2,
             esc3,
             esc4,
+
+            controller_aux,
+            controller_m0,
+            controller_m1,
+            controller,
+
+            gps,
         }
     }
 
@@ -200,6 +199,73 @@ mod app {
         loop {
             cortex_m::asm::wfi();
         }
+    }
+
+    #[task(binds = USART1, resources = [serial1, controller, esc1, esc2, esc3, esc4])]
+    fn usart1(mut cx: usart1::Context) {
+        let serial = &mut cx.resources.serial1;
+        let controller = &mut cx.resources.controller;
+
+        let msg = (serial, controller).lock(|serial: &mut Serial1, controller: &mut Controller| {
+            while serial.is_rxne() {
+                match controller.read(serial) {
+                    Ok(msg) => {
+                        return msg;
+                    }
+                    Err(_) => {
+                        return None;
+                    }
+                }
+            }
+
+            None
+        });
+
+        match msg {
+            Some(msg) => {
+                use droners_components::e32::command::Command;
+
+                match msg {
+                    Command::Controller { right_trigger, .. } => {
+                        let throttle = right_trigger as u16 * 256;
+
+                        let esc1 = &mut cx.resources.esc1;
+                        let esc2 = &mut cx.resources.esc2;
+                        let esc3 = &mut cx.resources.esc3;
+                        let esc4 = &mut cx.resources.esc4;
+
+                        esc1.lock(|esc: &mut Esc1| {
+                            esc.set_throttle(throttle);
+                        });
+
+                        esc2.lock(|esc: &mut Esc2| {
+                            esc.set_throttle(throttle);
+                        });
+
+                        esc3.lock(|esc: &mut Esc3| {
+                            esc.set_throttle(throttle);
+                        });
+
+                        esc4.lock(|esc: &mut Esc4| {
+                            esc.set_throttle(throttle);
+                        });
+                    }
+                }
+            }
+            None => {}
+        }
+    }
+
+    #[task(binds = USART2, resources = [serial2, gps])]
+    fn usart2(mut cx: usart2::Context) {
+        let serial = &mut cx.resources.serial2;
+        let gps = &mut cx.resources.gps;
+
+        (serial, gps).lock(
+            |serial: &mut Serial2, gps: &mut GpsModule| {
+                if let Some(_) = gps.read(serial) {}
+            },
+        )
     }
 
     #[task(binds = TIM2, priority = 2, resources = [tim2, dma_transfer4, dma_transfer5, dma_transfer7, dma_transfer2, esc1, esc2, esc3, esc4])]
@@ -241,42 +307,6 @@ mod app {
             (*tim3).dier.modify(|_, w| w.cc2de().enabled());
             (*tim3).dier.modify(|_, w| w.cc3de().enabled());
             (*tim3).dier.modify(|_, w| w.cc4de().enabled());
-        }
-    }
-
-    #[task(binds = I2C1_EV, resources = [i2c1, nav, esc1, esc2, esc3, esc4])]
-    fn i2c1_ev(mut cx: i2c1_ev::Context) {
-        let i2c = &mut cx.resources.i2c1;
-        let nav = &mut cx.resources.nav;
-
-        let cmd = (i2c, nav).lock(|i2c: &mut I2c1, nav: &mut Navigation| nav.read(i2c));
-
-        if let Ok(cmd) = cmd {
-            if let Some(cmd) = cmd {
-                match cmd {
-                    internal::Command::ThrottleBulk { values } => {
-                        if let Some(throttle) = values[0] {
-                            let esc = &mut cx.resources.esc1;
-                            esc.lock(|esc: &mut Esc1| esc.set_throttle(throttle));
-                        }
-
-                        if let Some(throttle) = values[1] {
-                            let esc = &mut cx.resources.esc2;
-                            esc.lock(|esc: &mut Esc2| esc.set_throttle(throttle));
-                        }
-
-                        if let Some(throttle) = values[2] {
-                            let esc = &mut cx.resources.esc3;
-                            esc.lock(|esc: &mut Esc3| esc.set_throttle(throttle));
-                        }
-
-                        if let Some(throttle) = values[3] {
-                            let esc = &mut cx.resources.esc4;
-                            esc.lock(|esc: &mut Esc4| esc.set_throttle(throttle));
-                        }
-                    }
-                }
-            }
         }
     }
 

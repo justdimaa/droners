@@ -1,7 +1,6 @@
 #![no_std]
-
-pub mod esc;
-pub mod internal;
-pub mod neo6m;
+#![deny(warnings)]
 
 pub mod e32;
+pub mod esc;
+pub mod neo6m;

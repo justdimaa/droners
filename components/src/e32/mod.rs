@@ -75,8 +75,8 @@ impl E32<pac::USART1> {
 
     pub fn write_cfg<PINS, M0: OutputPin, M1: OutputPin>(
         &mut self,
-        serial: &mut serial::Serial<pac::USART1, PINS>,
-        cfg: ParameterSettings,
+        _serial: &mut serial::Serial<pac::USART1, PINS>,
+        _cfg: ParameterSettings,
         m0_pin: &mut M0,
         m1_pin: &mut M1,
     ) -> Result<()> {

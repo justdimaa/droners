@@ -3,5 +3,6 @@
 members = [
     "navigation",
     "flightcontrol",
+    "transmitter",
     "components"
 ]

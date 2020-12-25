@@ -42,12 +42,12 @@
             /* Configuration for the STM32F303 Discovery board */
             "type": "cortex-debug",
             "request": "launch",
-            "name": "Debug Navigation (OpenOCD)",
+            "name": "Debug Transmitter (OpenOCD)",
             "servertype": "openocd",
             "cwd": "${workspaceRoot}",
             "preLaunchTask": "rust: cargo build",
             "runToMain": true,
-            "executable": "./target/thumbv7em-none-eabi/debug/navigation",
+            "executable": "./target/thumbv7em-none-eabi/debug/transmitter",
             /* Run `cargo build --example itm` and uncomment this line to run itm example */
             // "executable": "./target/thumbv7em-none-eabi/debug/examples/itm",
             "device": "STM32F411CEU6",

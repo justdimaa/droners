@@ -5,28 +5,13 @@
 extern crate cortex_m_semihosting;
 extern crate panic_halt;
 
+mod typedefs;
+
 #[rtic::app(device = stm32f4xx_hal::pac, peripherals = true)]
 mod app {
+    use crate::typedefs::*;
     use droners_components::e32;
-    use stm32f4xx_hal::{adc, gpio, pac, prelude::*, serial, stm32};
-
-    type Adc1 = adc::Adc<pac::ADC1>;
-
-    type Serial1 = serial::Serial<
-        pac::USART1,
-        (
-            gpio::gpioa::PA9<gpio::Alternate<gpio::AF7>>,
-            gpio::gpioa::PA10<gpio::Alternate<gpio::AF7>>,
-        ),
-    >;
-
-    type LeftThumbStickX = gpio::gpioa::PA0<gpio::Analog>;
-    type LeftThumbStickY = gpio::gpioa::PA1<gpio::Analog>;
-
-    type RightThumbStickX = gpio::gpioa::PA2<gpio::Analog>;
-    type RightThumbStickY = gpio::gpioa::PA3<gpio::Analog>;
-
-    type Navigation = e32::E32<pac::USART1>;
+    use stm32f4xx_hal::{adc, prelude::*, serial, stm32};
 
     #[resources]
     struct Resources {

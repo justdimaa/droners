@@ -27,11 +27,12 @@ fn get_dshot_dma_cfg() -> dma::config::DmaConfig {
 mod app {
     use core::mem;
 
-    use droners_components::{e32, esc, ublox};
+    use droners_components::{ak8963, e32, esc, mpu6500, mpu925x, ublox};
     use esc::DSHOT_600_MHZ;
     use stm32f4xx_hal::{
+        delay,
         dma::{self, traits::Stream},
-        pac,
+        gpio, i2c, pac,
         prelude::*,
         serial, stm32, timer,
     };
@@ -41,7 +42,11 @@ mod app {
 
     #[resources]
     struct Resources {
+        delay: delay::Delay,
+
         tim2: Timer2,
+
+        i2c1: I2c1,
 
         serial1: Serial1,
         serial2: Serial2,
@@ -61,17 +66,26 @@ mod app {
         controller_m1: ControllerM1,
         controller: Controller,
 
-        gps: GpsModule,
+        gps: Gps,
+
+        mpu_aux: MpuAux,
+        mpu: Mpu,
+
+        key: Key,
     }
 
     #[init]
     fn init(cx: init::Context) -> init::LateResources {
-        let _core: cortex_m::Peripherals = cx.core;
-        let device: stm32::Peripherals = cx.device;
+        let core: cortex_m::Peripherals = cx.core;
+        let mut device: stm32::Peripherals = cx.device;
 
         let rcc = device.RCC.constrain();
 
         let clocks = rcc.cfgr.use_hse(25.mhz()).sysclk(48.mhz()).freeze();
+
+        let mut syscfg = device.SYSCFG.constrain();
+
+        let mut delay = delay::Delay::new(core.SYST, clocks);
 
         let gpioa = device.GPIOA.split();
         let gpiob = device.GPIOB.split();
@@ -83,6 +97,16 @@ mod app {
 
         let mut tim2 = timer::Timer::tim2(device.TIM2, 750.hz(), clocks);
         tim2.listen(timer::Event::TimeOut);
+
+        let mut i2c1 = i2c::I2c::i2c1(
+            device.I2C1,
+            (
+                gpiob.pb6.into_alternate_af4_open_drain(),
+                gpiob.pb7.into_alternate_af4_open_drain(),
+            ),
+            400.khz(),
+            clocks,
+        );
 
         let serial1 = serial::Serial::usart1(
             device.USART1,
@@ -167,10 +191,40 @@ mod app {
         let controller_m1 = gpiob.pb15.into_open_drain_output();
         let controller = e32::E32::<pac::USART1>::new();
 
+        let mut mpu_aux = gpiob.pb2.into_floating_input();
+        mpu_aux.make_interrupt_source(&mut syscfg);
+        mpu_aux.enable_interrupt(&mut device.EXTI);
+        mpu_aux.trigger_on_edge(&mut device.EXTI, gpio::Edge::RISING);
+
+        let mpu = mpu925x::Mpu925x::<I2c1, mpu925x::Madgwick>::with_configuration(
+            0x0C,
+            0x68,
+            &mut i2c1,
+            &mut delay,
+            mpu925x::config::Config::default()
+                .ak(ak8963::config::Config::default())
+                .mpu(mpu6500::config::Config::default()),
+        );
+
+        if let Err(e) = &mpu {
+            cortex_m_semihosting::heprintln!("{:?}", e).ok();
+            panic!("could not initialize mpu.");
+        }
+
+        let mpu = mpu.unwrap();
+
         let gps = ublox::Ublox::<Serial2>::new();
 
+        let mut key = gpioa.pa0.into_pull_up_input();
+        key.make_interrupt_source(&mut syscfg);
+        key.enable_interrupt(&mut device.EXTI);
+        key.trigger_on_edge(&mut device.EXTI, gpio::Edge::FALLING);
+
         init::LateResources {
+            delay,
             tim2,
+
+            i2c1,
 
             serial1,
             serial2,
@@ -190,7 +244,12 @@ mod app {
             controller_m1,
             controller,
 
+            mpu_aux,
+            mpu,
+
             gps,
+
+            key,
         }
     }
 
@@ -199,6 +258,48 @@ mod app {
         loop {
             cortex_m::asm::wfi();
         }
+    }
+
+    #[task(binds = EXTI0, resources = [delay, i2c1, mpu, key])]
+    fn exti0(mut cx: exti0::Context) {
+        let delay = &mut cx.resources.delay;
+        let i2c1 = &mut cx.resources.i2c1;
+        let mpu = &mut cx.resources.mpu;
+        let key = &mut cx.resources.key;
+
+        key.lock(|key: &mut Key| {
+            if !key.check_interrupt() {
+                return;
+            }
+
+            key.clear_interrupt_pending_bit();
+
+            delay.lock(|delay: &mut delay::Delay| {
+                (i2c1, mpu).lock(|i2c: &mut I2c1, mpu: &mut Mpu| {
+                    mpu.calibrate_mpu(i2c, delay).ok();
+                    mpu.calibrate_ak(i2c, delay).ok();
+                });
+            });
+        });
+    }
+
+    #[task(binds = EXTI2, resources = [i2c1, mpu_aux, mpu])]
+    fn exti2(mut cx: exti2::Context) {
+        let i2c1 = &mut cx.resources.i2c1;
+        let mpu_aux = &mut cx.resources.mpu_aux;
+        let mpu = &mut cx.resources.mpu;
+
+        mpu_aux.lock(|mpu_aux: &mut MpuAux| {
+            if !mpu_aux.check_interrupt() {
+                return;
+            }
+
+            mpu_aux.clear_interrupt_pending_bit();
+
+            (i2c1, mpu).lock(|i2c: &mut I2c1, mpu: &mut Mpu| {
+                mpu.read(i2c).ok();
+            })
+        });
     }
 
     #[task(binds = USART1, resources = [serial1, controller, esc1, esc2, esc3, esc4])]
@@ -263,14 +364,14 @@ mod app {
 
         serial.lock(|serial: &mut Serial2| {
             if serial.is_rxne() {
-                gps.lock(|gps: &mut GpsModule| {
+                gps.lock(|gps: &mut Gps| {
                     let _ = gps.read(serial);
                 })
             }
         });
     }
 
-    #[task(binds = TIM2, priority = 2, resources = [tim2, dma_transfer4, dma_transfer5, dma_transfer7, dma_transfer2, esc1, esc2, esc3, esc4])]
+    #[task(binds = TIM2, priority = 2, resources = [tim2, dma_transfer4, dma_transfer5, dma_transfer7, dma_transfer2, esc1, esc2, esc3, esc4, mpu])]
     fn tim2(mut cx: tim2::Context) {
         let tim = &mut cx.resources.tim2;
         let transfer4 = &mut cx.resources.dma_transfer4;
@@ -285,6 +386,12 @@ mod app {
         tim.lock(|tim: &mut Timer2| {
             tim.clear_interrupt(timer::Event::TimeOut);
         });
+
+        let mpu = &mut cx.resources.mpu;
+
+        let _rotation = mpu.lock(|mpu: &mut Mpu| mpu.rotation());
+
+        // todo: impl pid controllers
 
         (transfer4, esc1).lock(|transfer: &mut DmaTransfer4, esc: &mut Esc1| {
             esc.start(transfer);

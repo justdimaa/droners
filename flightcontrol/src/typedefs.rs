@@ -1,7 +1,15 @@
-use droners_components::{e32, esc, ublox};
-use stm32f4xx_hal::{dma, gpio, pac, serial, timer};
+use droners_components::{e32, esc, mpu925x, ublox};
+use stm32f4xx_hal::{dma, gpio, i2c, pac, serial, timer};
 
 pub type Timer2 = timer::Timer<pac::TIM2>;
+
+pub type I2c1 = i2c::I2c<
+    pac::I2C1,
+    (
+        gpio::gpiob::PB6<gpio::AlternateOD<gpio::AF4>>,
+        gpio::gpiob::PB7<gpio::AlternateOD<gpio::AF4>>,
+    ),
+>;
 
 pub type Serial1 = serial::Serial<
     pac::USART1,
@@ -65,4 +73,9 @@ pub type ControllerM0 = gpio::gpiob::PB14<gpio::Output<gpio::OpenDrain>>;
 pub type ControllerM1 = gpio::gpiob::PB15<gpio::Output<gpio::OpenDrain>>;
 pub type Controller = e32::E32<pac::USART1>;
 
-pub type GpsModule = ublox::Ublox<Serial2>;
+pub type MpuAux = gpio::gpiob::PB2<gpio::Input<gpio::Floating>>;
+pub type Mpu = mpu925x::Mpu925x<I2c1, mpu925x::Madgwick>;
+
+pub type Gps = ublox::Ublox<Serial2>;
+
+pub type Key = gpio::gpioa::PA0<gpio::Input<gpio::PullUp>>;

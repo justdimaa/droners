@@ -14,7 +14,8 @@ nb = "1.0.0"
 
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 serde-json-core = "0.2.0"
-nalgebra = { version = "0.23.0", default-features = false }
+nalgebra = { version = "0.21", default-features = false }
+ahrs = { version = "0.3.0", default-features = false }
 nmea0183 = "0.2.3"
 heapless = "0.5.6"
 

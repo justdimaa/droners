@@ -1,5 +1,7 @@
-use droners_components::{e32, esc, mpu925x, ublox};
+use embedded_sensors::{mpu925x, ublox};
 use stm32f4xx_hal::{dma, gpio, i2c, pac, serial, timer};
+
+use crate::{e32, esc};
 
 pub type Timer2 = timer::Timer<pac::TIM2>;
 

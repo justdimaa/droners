@@ -7,6 +7,8 @@ use stm32f4xx_hal::dma;
 extern crate cortex_m_semihosting;
 extern crate panic_halt;
 
+mod e32;
+mod esc;
 mod typedefs;
 
 fn get_dshot_dma_cfg() -> dma::config::DmaConfig {
@@ -27,8 +29,7 @@ fn get_dshot_dma_cfg() -> dma::config::DmaConfig {
 mod app {
     use core::mem;
 
-    use droners_components::{ak8963, e32, esc, mpu6500, mpu925x, ublox};
-    use esc::DSHOT_600_MHZ;
+    use embedded_sensors::{ak8963, mpu6500, mpu925x, ublox};
     use stm32f4xx_hal::{
         delay,
         dma::{self, traits::Stream},
@@ -37,6 +38,7 @@ mod app {
         serial, stm32, timer,
     };
 
+    use crate::{e32, esc};
     use crate::get_dshot_dma_cfg;
     use crate::typedefs::*;
 
@@ -184,7 +186,7 @@ mod app {
         );
 
         let (esc1, esc2, esc3, esc4): (Esc1, Esc2, Esc3, Esc4) =
-            esc::tim3(device.TIM3, clocks, DSHOT_600_MHZ.mhz());
+            esc::tim3(device.TIM3, clocks, esc::DSHOT_600_MHZ.mhz());
 
         let controller_aux = gpioa.pa8.into_pull_up_input();
         let controller_m0 = gpiob.pb14.into_open_drain_output();
@@ -324,7 +326,7 @@ mod app {
 
         match msg {
             Some(msg) => {
-                use droners_components::e32::command::Command;
+                use e32::command::Command;
 
                 match msg {
                     Command::Controller { right_trigger, .. } => {

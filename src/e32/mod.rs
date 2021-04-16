@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 use core::{convert::TryFrom, marker::PhantomData};
 
 use embedded_hal::{

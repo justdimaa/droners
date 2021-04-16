@@ -1,3 +1,5 @@
+#![allow(warnings)]
+
 use core::marker::PhantomData;
 
 use stm32f4xx_hal::{

@@ -16,8 +16,8 @@ pub const DSHOT_1200_MHZ: u32 = 24;
 
 pub const DMA_BUFFER_LEN: usize = DSHOT_BUFFER_LEN + 2;
 const DSHOT_BUFFER_LEN: usize = 16;
-const DSHOT_BIT_0: u16 = 7;
-const DSHOT_BIT_1: u16 = 14;
+const DSHOT_BIT_0: u16 = 8;
+const DSHOT_BIT_1: u16 = 16;
 
 #[derive(Debug)]
 pub struct EscChannels<TRANSFER> {

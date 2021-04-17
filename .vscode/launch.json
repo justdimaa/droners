@@ -8,15 +8,15 @@
     "version": "0.2.0",
     "configurations": [
         {
-            /* Configuration for the STM32F303 Discovery board */
+            /* Configuration for the STM32F411 (black pill) board */
             "type": "cortex-debug",
             "request": "launch",
-            "name": "Debug FlightControl (OpenOCD)",
+            "name": "Debug (OpenOCD)",
             "servertype": "openocd",
             "cwd": "${workspaceRoot}",
             "preLaunchTask": "rust: cargo build",
             "runToMain": true,
-            "executable": "./target/thumbv7em-none-eabi/debug/flightcontrol",
+            "executable": "./target/thumbv7em-none-eabihf/debug/droners",
             /* Run `cargo build --example itm` and uncomment this line to run itm example */
             // "executable": "./target/thumbv7em-none-eabi/debug/examples/itm",
             "device": "STM32F411CEU6",
@@ -38,36 +38,5 @@
                 "monitor arm semihosting enable",
             ],
         },
-        {
-            /* Configuration for the STM32F303 Discovery board */
-            "type": "cortex-debug",
-            "request": "launch",
-            "name": "Debug Transmitter (OpenOCD)",
-            "servertype": "openocd",
-            "cwd": "${workspaceRoot}",
-            "preLaunchTask": "rust: cargo build",
-            "runToMain": true,
-            "executable": "./target/thumbv7em-none-eabi/debug/transmitter",
-            /* Run `cargo build --example itm` and uncomment this line to run itm example */
-            // "executable": "./target/thumbv7em-none-eabi/debug/examples/itm",
-            "device": "STM32F411CEU6",
-            "configFiles": [
-                "interface/stlink.cfg",
-                "target/stm32f4x.cfg"
-            ],
-            "svdFile": "${workspaceRoot}/.vscode/STM32F411.svd",
-            "swoConfig": {
-                "enabled": true,
-                "cpuFrequency": 48000000,
-                "swoFrequency": 1800000,
-                "source": "probe",
-                "decoders": [
-                    { "type": "console", "label": "ITM", "port": 0 }
-                ]
-            },
-            "postLaunchCommands": [
-                "monitor arm semihosting enable",
-            ],
-        }
     ]
 }

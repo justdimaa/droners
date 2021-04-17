@@ -77,7 +77,7 @@ mod app {
 
         let rcc = device.RCC.constrain();
 
-        let clocks = rcc.cfgr.use_hse(25.mhz()).sysclk(48.mhz()).freeze();
+        let clocks = rcc.cfgr.use_hse(25.mhz()).sysclk(100.mhz()).freeze();
 
         let mut syscfg = device.SYSCFG.constrain();
 

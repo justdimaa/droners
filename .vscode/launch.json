@@ -27,7 +27,7 @@
             "svdFile": "${workspaceRoot}/.vscode/STM32F411.svd",
             "swoConfig": {
                 "enabled": true,
-                "cpuFrequency": 48000000,
+                "cpuFrequency": 100000000,
                 "swoFrequency": 1800000,
                 "source": "probe",
                 "decoders": [

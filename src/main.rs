@@ -7,7 +7,6 @@ use stm32f4xx_hal::dma;
 extern crate cortex_m_semihosting;
 extern crate panic_halt;
 
-mod e32;
 mod esc;
 mod typedefs;
 
@@ -38,7 +37,7 @@ mod app {
         serial, stm32, timer,
     };
 
-    use crate::{e32, esc};
+    use crate::esc;
     use crate::get_dshot_dma_cfg;
     use crate::typedefs::*;
 
@@ -62,11 +61,6 @@ mod app {
         esc2: Esc2,
         esc3: Esc3,
         esc4: Esc4,
-
-        controller_aux: ControllerAux,
-        controller_m0: ControllerM0,
-        controller_m1: ControllerM1,
-        controller: Controller,
 
         gps: Gps,
 
@@ -100,7 +94,7 @@ mod app {
         let mut tim2 = timer::Timer::tim2(device.TIM2, 750.hz(), clocks);
         tim2.listen(timer::Event::TimeOut);
 
-        let mut i2c1 = i2c::I2c::i2c1(
+        let mut i2c1 = i2c::I2c::new(
             device.I2C1,
             (
                 gpiob.pb6.into_alternate_af4_open_drain(),
@@ -188,11 +182,6 @@ mod app {
         let (esc1, esc2, esc3, esc4): (Esc1, Esc2, Esc3, Esc4) =
             esc::tim3(device.TIM3, clocks, esc::DSHOT_600_MHZ.mhz());
 
-        let controller_aux = gpioa.pa8.into_pull_up_input();
-        let controller_m0 = gpiob.pb14.into_open_drain_output();
-        let controller_m1 = gpiob.pb15.into_open_drain_output();
-        let controller = e32::E32::<pac::USART1>::new();
-
         let mut mpu_aux = gpiob.pb2.into_floating_input();
         mpu_aux.make_interrupt_source(&mut syscfg);
         mpu_aux.enable_interrupt(&mut device.EXTI);
@@ -240,11 +229,6 @@ mod app {
             esc2,
             esc3,
             esc4,
-
-            controller_aux,
-            controller_m0,
-            controller_m1,
-            controller,
 
             mpu_aux,
             mpu,
@@ -302,61 +286,6 @@ mod app {
                 mpu.read(i2c).ok();
             })
         });
-    }
-
-    #[task(binds = USART1, resources = [serial1, controller, esc1, esc2, esc3, esc4])]
-    fn usart1(mut cx: usart1::Context) {
-        let serial = &mut cx.resources.serial1;
-        let controller = &mut cx.resources.controller;
-
-        let msg = (serial, controller).lock(|serial: &mut Serial1, controller: &mut Controller| {
-            while serial.is_rxne() {
-                match controller.read(serial) {
-                    Ok(msg) => {
-                        return msg;
-                    }
-                    Err(_) => {
-                        return None;
-                    }
-                }
-            }
-
-            None
-        });
-
-        match msg {
-            Some(msg) => {
-                use e32::command::Command;
-
-                match msg {
-                    Command::Controller { right_trigger, .. } => {
-                        let throttle = right_trigger as u16 * 256;
-
-                        let esc1 = &mut cx.resources.esc1;
-                        let esc2 = &mut cx.resources.esc2;
-                        let esc3 = &mut cx.resources.esc3;
-                        let esc4 = &mut cx.resources.esc4;
-
-                        esc1.lock(|esc: &mut Esc1| {
-                            esc.set_throttle(throttle);
-                        });
-
-                        esc2.lock(|esc: &mut Esc2| {
-                            esc.set_throttle(throttle);
-                        });
-
-                        esc3.lock(|esc: &mut Esc3| {
-                            esc.set_throttle(throttle);
-                        });
-
-                        esc4.lock(|esc: &mut Esc4| {
-                            esc.set_throttle(throttle);
-                        });
-                    }
-                }
-            }
-            None => {}
-        }
     }
 
     #[task(binds = USART2, resources = [serial2, gps])]

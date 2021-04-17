@@ -1,7 +1,7 @@
 use embedded_sensors::{mpu925x, ublox};
 use stm32f4xx_hal::{dma, gpio, i2c, pac, serial, timer};
 
-use crate::{e32, esc};
+use crate::esc;
 
 pub type Timer2 = timer::Timer<pac::TIM2>;
 
@@ -69,11 +69,6 @@ pub type Esc1 = esc::EscChannels<DmaTransfer4>;
 pub type Esc2 = esc::EscChannels<DmaTransfer5>;
 pub type Esc3 = esc::EscChannels<DmaTransfer7>;
 pub type Esc4 = esc::EscChannels<DmaTransfer2>;
-
-pub type ControllerAux = gpio::gpioa::PA8<gpio::Input<gpio::PullUp>>;
-pub type ControllerM0 = gpio::gpiob::PB14<gpio::Output<gpio::OpenDrain>>;
-pub type ControllerM1 = gpio::gpiob::PB15<gpio::Output<gpio::OpenDrain>>;
-pub type Controller = e32::E32<pac::USART1>;
 
 pub type MpuAux = gpio::gpiob::PB2<gpio::Input<gpio::Floating>>;
 pub type Mpu = mpu925x::Mpu925x<I2c1, mpu925x::Madgwick>;

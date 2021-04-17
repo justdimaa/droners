@@ -71,7 +71,7 @@ mod app {
     }
 
     #[init]
-    fn init(cx: init::Context) -> init::LateResources {
+    fn init(cx: init::Context) -> (init::LateResources, init::Monotonics) {
         let core: cortex_m::Peripherals = cx.core;
         let mut device: stm32::Peripherals = cx.device;
 
@@ -211,32 +211,35 @@ mod app {
         key.enable_interrupt(&mut device.EXTI);
         key.trigger_on_edge(&mut device.EXTI, gpio::Edge::FALLING);
 
-        init::LateResources {
-            delay,
-            tim2,
+        (
+            init::LateResources {
+                delay,
+                tim2,
 
-            i2c1,
+                i2c1,
 
-            serial1,
-            serial2,
+                serial1,
+                serial2,
 
-            dma_transfer4,
-            dma_transfer5,
-            dma_transfer7,
-            dma_transfer2,
+                dma_transfer4,
+                dma_transfer5,
+                dma_transfer7,
+                dma_transfer2,
 
-            esc1,
-            esc2,
-            esc3,
-            esc4,
+                esc1,
+                esc2,
+                esc3,
+                esc4,
 
-            mpu_aux,
-            mpu,
+                mpu_aux,
+                mpu,
 
-            gps,
+                gps,
 
-            key,
-        }
+                key,
+            },
+            init::Monotonics(),
+        )
     }
 
     #[idle]

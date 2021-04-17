@@ -11,7 +11,7 @@ embedded-hal = "0.2.4"
 embedded-sensors = { version = "0.1.1", default-features = false, features = ["mpu925x", "ublox"] }
 stm32f4xx-hal = { version = "0.9.0", features = ["stm32f411", "rt"] }
 nb = "1.0.0"
-cortex-m = "0.6.4"
+cortex-m = "0.7.2"
 cortex-m-semihosting = "0.3.7"
-cortex-m-rtic = { git = "https://github.com/rtic-rs/cortex-m-rtic", rev = "e65a86f6962218b66a14b7ccc40eec7976880eba" }
+cortex-m-rtic = "0.6.0-alpha.2"
 panic-halt = "0.2.0"

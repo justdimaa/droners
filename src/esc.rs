@@ -16,6 +16,7 @@ pub const DSHOT_1200_MHZ: u32 = 24;
 
 pub const DMA_BUFFER_LEN: usize = DSHOT_BUFFER_LEN + 2;
 const DSHOT_BUFFER_LEN: usize = 16;
+const DSHOT_BIT_LEN: u32 = 20;
 const DSHOT_BIT_0: u16 = 8;
 const DSHOT_BIT_1: u16 = 16;
 
@@ -67,7 +68,7 @@ macro_rules! esc_all_channels {
                 let clk = clocks.$pclk().0 * if clocks.$ppre() == 1 { 1 } else { 2 };
                 tim.psc
                     .write(|w| w.psc().bits((clk / freq.into().0 - 1) as u16));
-                tim.arr.write(|w| unsafe { w.bits(DMA_BUFFER_LEN as u32) });
+                tim.arr.write(|w| unsafe { w.bits(DSHOT_BIT_LEN) });
 
                 tim.cr1.modify(|_, w| w.urs().set_bit());
                 tim.egr.write(|w| w.ug().set_bit());
